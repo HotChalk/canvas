@@ -206,8 +206,6 @@ try:
 except:
   open(logFilePath, 'a').close()
 
-_o("Log File: {}".format( logFilePath))
-
 t = time.strftime("%Y%m%d_%H:%M:%S")
 
 def UnicodeDictReader(utf8_data, **kwargs):

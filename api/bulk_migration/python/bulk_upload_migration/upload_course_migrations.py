@@ -38,6 +38,8 @@ migration_base_url = None # This only needs to be set if linking to files to dow
                           # the web somewhere
 process_type = 'upload' # options are 'upload' or 'link'
 
+status_check_wait_seconds = 5 # Sleep time between course import status checks
+
 """ Recent options for migration_type include:
 "type": "angel_exporter",
 "name": "Angel export .zip format",
@@ -132,6 +134,36 @@ def uploadFile(data,filename):
     headers=result.info()))
   return response
 
+def get_json(uri, headers=None):
+  return do_json_request("get", uri, headers=headers)
+
+def put_json(uri, headers=None, data=None):
+  return do_json_request("put", uri, headers=headers, data=data)
+
+def post_json(uri, headers=None, data=None):
+  return do_json_request("post", uri, headers=headers, data=data)
+
+def do_json_request(method, uri, headers=None, data=None):
+  success = False
+  result = None
+  while not success:
+    try:
+      if method == "get":
+        response = requests.get(uri, headers=headers)
+      elif method == "post":
+        response = requests.post(uri, headers=headers, data=data)
+      elif method == "put":
+        response = requests.put(uri, headers=headers, data=data)
+      else:
+        return None
+      if response.status_code == 200 or response.status_code == 201:
+        result = response.json()
+        success = True
+      else:
+        time.sleep(status_check_wait_seconds)
+    except:
+      pass
+  return result
 
 def massDoCopies(data):
   # data[1] is the row of data, in the form of a list
@@ -152,7 +184,7 @@ def massDoCopies(data):
   found_course = {}
   while not done_finding:
     try:
-      found_course = requests.get(course_search_url,headers=headers).json()
+      found_course = get_json(course_search_url,headers=headers)
       done_finding = True
     except:
       pass
@@ -173,13 +205,13 @@ def massDoCopies(data):
       # Get the course used quota
       #/api/v1/courses/:course_id/files/quota
       course_quota_url = "https://{}/api/v1/courses/{}/files/quota".format(canvas_domain,row_data['destination_id'])
-      course_quota_info = requests.get(course_quota_url,headers=headers).json()
+      course_quota_info = get_json(course_quota_url, headers=headers)
       # if it isn't large enough for the unzipped
       # files then increase it to current usage + uncompress_size + 50%
       if not ((course_quota_info['quota'] - course_quota_info['quota_used'])/1000000.0) > uncompress_size_mb:
         # Increase the space needed
         update_course_data = {'course[storage_quota_mb]':course_quota_info['quota']+uncompress_size_mb}
-        course_quota_info = requests.put(course_search_url,data=update_course_data,headers=headers).json()
+        course_quota_info = put_json(course_search_url,data=update_course_data,headers=headers)
 
       # TODO Pre-upload content package checking according to the type.
       # TODO Get list of common errors from Tdoxey
@@ -203,14 +235,13 @@ def massDoCopies(data):
     uri = "https://{}/api/v1/courses/{}/content_migrations".format(canvas_domain,row_data['destination_id'])
     rootLogger.info('{} uri: {}'.format(logger_prefix,uri))
 
-    migration = requests.post(uri,headers=headers_post,data=json.dumps(params))
-    migration_json = migration.json()
+    migration_json = post_json(uri, headers=headers_post, data=json.dumps(params))
 
-    rootLogger.debug(migration.json())
+    rootLogger.debug(migration_json)
     if process_type=='upload':
       prog_bar.label = 'done triggering course copy, now uploading'
       rootLogger.info("{} Done prepping Canvas for upload, now sending the data...".format(logger_prefix))
-      json_res = json.loads(migration.text,object_pairs_hook=collections.OrderedDict)
+      json_res = json.loads(json.dumps(migration_json),object_pairs_hook=collections.OrderedDict)
 
 
       # Step 2:  Upload data
@@ -231,21 +262,22 @@ def massDoCopies(data):
 
       rootLogger.info("{} Done uploading the file, now confirming the upload...".format(logger_prefix))
       rootLogger.info("{} upload completed...nicely done! The Course migration should be starting soon.".format(logger_prefix))
-      migration_json = requests.get('https://{}/api/v1/courses/{}/content_migrations/{}'.format(canvas_domain,row_data['destination_id'],migration_json['id']),headers=headers).json()
+      migration_json = get_json('https://{}/api/v1/courses/{}/content_migrations/{}'.format(canvas_domain,row_data['destination_id'],migration_json['id']),headers=headers)
 
       
-    output = "\r\n" + migration.text
+    output = "\r\n" + json.dumps(migration_json)
     rootLogger.debug(output)
 
     prog_url = migration_json['progress_url']
     if wait_till_done:
-      status = requests.get(prog_url,headers=headers).json()
+      status = get_json(prog_url,headers=headers)
       last_progress = status['completion']
       while status['workflow_state'] in ('pre-processing','queued','running'):
+        time.sleep(status_check_wait_seconds)
         done_statusing = False
         while not done_statusing:
           try:
-            status = requests.get(prog_url,headers=headers).json()
+            status = get_json(prog_url,headers=headers)
             done_statusing = True
           except Exception, err:
             rootLogger.error('{} {}'.format(logger_prefix,err))
@@ -256,7 +288,7 @@ def massDoCopies(data):
       if status['workflow_state']=='failed':
           rootLogger.info("{} - {} - {} {}".format(canvas_domain,row_data['destination_id'],status['workflow_state'],status['completion']))
           rootLogger.info("{} - {} - migration issues: {}".format(canvas_domain,row_data['destination_id'],migration_json['migration_issues_url']))
-          rootLogger.debug(requests.get(migration_json['migration_issues_url'],headers=headers).text)
+          rootLogger.debug(json.dumps(get_json(migration_json['migration_issues_url'],headers=headers)))
       else:
           rootLogger.info("{} - {} - {} {}".format(canvas_domain,row_data['destination_id'],status['workflow_state'],status['completion']))
     #copyCache['sources'][source_id].append(csvrow[destination_course_id_column])
@@ -278,7 +310,7 @@ def runMigrations(copies):
     res = pool.map_async(massDoCopies, ((bar,x) for x in copies))
     stats = []
     try:
-        stats.append(res.get(0xFFFF))
+        stats.append(res.get(timeout=None))
     except KeyboardInterrupt:
         print 'kill processes'
         #pool.terminate()
