@@ -178,7 +178,7 @@ def massDoCopies(data):
   file_path = os.path.join(workingPath,row_data['source_id'])
   rootLogger.debug(row_data)
   course_search_url = "https://{}/api/v1/courses/{}".format(canvas_domain,row_data['destination_id'])
-  rootLogger.info('{} looking for course: {}'.format(logger_prefix,course_search_url))
+  rootLogger.debug('{} looking for course: {}'.format(logger_prefix,course_search_url))
 
   done_finding = False
   found_course = {}
@@ -191,7 +191,7 @@ def massDoCopies(data):
   if not found_course.get('id',None):
     rootLogger.error('{} course {} {}'.format(logger_prefix,row_data['destination_id'], 'not found'))
   else:
-    rootLogger.info('{} course found {}'.format(logger_prefix,found_course))
+    rootLogger.debug('{} course found {}'.format(logger_prefix,found_course))
     prog_bar.label = 'course found {}'.format(row_data['destination_id'])
 
     params = {
@@ -228,12 +228,12 @@ def massDoCopies(data):
       # set the url field
       params['settings'] = {'file_url':row_data['source_id']}
 
-    rootLogger.info('{} {}'.format(logger_prefix,params))
+    rootLogger.debug('{} {}'.format(logger_prefix,params))
 
 
     headers_post = {'Authorization':headers['Authorization'],'Content-type':'application/json'}
     uri = "https://{}/api/v1/courses/{}/content_migrations".format(canvas_domain,row_data['destination_id'])
-    rootLogger.info('{} uri: {}'.format(logger_prefix,uri))
+    rootLogger.debug('{} uri: {}'.format(logger_prefix,uri))
 
     migration_json = post_json(uri, headers=headers_post, data=json.dumps(params))
 
@@ -292,8 +292,8 @@ def massDoCopies(data):
       else:
           rootLogger.info("{} - {} - {} {}".format(canvas_domain,row_data['destination_id'],status['workflow_state'],status['completion']))
     #copyCache['sources'][source_id].append(csvrow[destination_course_id_column])
-    rootLogger.info(last_progress)
-    rootLogger.info('all done')
+    rootLogger.debug(last_progress)
+    rootLogger.debug('all done')
   return row_data
 
 def runMigrations(copies):
@@ -361,7 +361,7 @@ if __name__ == '__main__':
   logging.getLogger("requests").setLevel(logging.WARNING)
   # Rotate the log files
   #handler = RotatingFileHandler(logFilePath, maxBytes=1000000, backupCount=5)
-  rootLogger.info("Log File: {}".format( logFilePath))
+  rootLogger.debug("Log File: {}".format( logFilePath))
 
   if CSVFileName[-1] == '/':
       rootLogger.info("The CSVFilename should not end in a forward slash.  You are warned")
