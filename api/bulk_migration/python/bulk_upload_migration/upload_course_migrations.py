@@ -305,8 +305,8 @@ def runMigrations(copies):
     #for x in copies:
     #  massDoCopies((bar,x))
 
-    print 'h2'
-    print 'copies',copies
+    #print 'h2'
+    #print 'copies',copies
     res = pool.map_async(massDoCopies, ((bar,x) for x in copies))
     stats = []
     try:
