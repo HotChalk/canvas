@@ -99,7 +99,9 @@ def course_exports(course_list):
     #print export_list
     for idx,cm in enumerate(export_list):
       course,res = cm
-      url = res.get('progress_url',None)
+      url = None
+      if res:
+        url = res.get('progress_url',None)
       if not url:
         del(export_list[idx])
 
